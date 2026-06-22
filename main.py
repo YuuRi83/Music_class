@@ -1,16 +1,9 @@
-
-# 작성한 app.py가 문법적으로 유효한지(파이썬 파싱 가능) 확인하기 위한 단계
-# 1) app.py 전체 코드를 문자열로 작성
-# 2) compile()로 SyntaxError가 없는지 점검
-# 3) 파일로 저장하여 첨부 가능 상태로 만든다
-
-app_code = r'''# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 🎵 중학생을 위한 음악 감상 & 데이터 대시보드
-- 단일 파일(app.py) Streamlit 앱
-- 사용 라이브러리: streamlit, pandas, numpy (추가 설치 불필요)
-- 실행:  streamlit run app.py
-- 배포:  Streamlit Cloud (requirements.txt에 streamlit, pandas, numpy 명시)
+- 감정 기반 음악 추천 + 오디오 특징(Feature) 분석 + 감상 비평지 작성
+- 사용 라이브러리: streamlit, pandas, numpy 만 사용 (외부 설치 최소화)
+- 실행 방법: streamlit run app.py
 """
 
 import io
@@ -22,463 +15,441 @@ import streamlit as st
 # 0) 페이지 기본 설정
 # =========================================================
 st.set_page_config(
-    page_title="중학생 음악 대시보드",
+    page_title="중학생 음악 감상 & 데이터 대시보드",
     page_icon="🎵",
     layout="wide",
 )
 
 # =========================================================
 # 1) 가상 데이터셋(Mock Data) 정의
-#    - 다양한 장르의 6곡
-#    - 밝기(Valence), 에너지(Energy), 템포(Tempo) 0~100 점수
-#    - 미리듣기용 샘플 오디오 URL (SoundHelix 공개 샘플)
-#    - 섹션별(도입부/후렴구/아웃트로) 에너지·템포 타임라인 데이터
+#    - 6곡, 다양한 장르
+#    - Valence(밝기), Energy(에너지), Tempo(빠르기) : 0~100
+#    - preview_url : st.audio에서 재생 가능한 mp3 링크 (SoundHelix 공개 데모)
+#    - timeline    : 도입부 → 전개부 → 후렴구 → 브릿지 → 아웃트로 (에너지/템포 변화)
 # =========================================================
 @st.cache_data
-def load_mock_songs() -> pd.DataFrame:
-    """가상 음악 데이터셋을 DataFrame으로 반환한다."""
+def load_mock_data():
+    """6곡의 가상 음악 데이터를 반환하는 함수"""
     songs = [
         {
             "title": "봄의 왈츠",
-            "artist": "가상 오케스트라",
+            "artist": "AI 클래식 챔버",
             "genre": "클래식",
-            "valence": 80,   # 밝기: 장조 느낌, 밝고 따뜻
-            "energy": 45,    # 에너지: 중간 정도 셈여림
-            "tempo": 60,     # 빠르기: Moderato 수준
-            "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+            "valence": 78,   # 밝기 (장조 느낌)
+            "energy": 45,    # 에너지 (셈여림)
+            "tempo": 60,     # 빠르기 (Allegretto 정도)
+            "preview_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
             "timeline": {
-                "sections": ["도입부", "전개부", "후렴구", "전환부", "아웃트로"],
-                "energy":   [30, 55, 75, 60, 35],
-                "tempo":    [55, 60, 65, 62, 55],
+                "section": ["도입부", "전개부", "후렴구", "브릿지", "아웃트로"],
+                "energy":  [30, 50, 70, 55, 25],
+                "tempo":   [55, 60, 65, 60, 50],
             },
         },
         {
-            "title": "달빛 소나타 by Night",
-            "artist": "Lunar Trio",
+            "title": "달빛 카페",
+            "artist": "Midnight Jazz Trio",
             "genre": "재즈",
-            "valence": 35,
-            "energy": 30,
+            "valence": 45,
+            "energy": 35,
             "tempo": 40,
-            "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+            "preview_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
             "timeline": {
-                "sections": ["도입부", "전개부", "후렴구", "전환부", "아웃트로"],
-                "energy":   [20, 30, 45, 35, 15],
-                "tempo":    [38, 40, 45, 42, 38],
+                "section": ["도입부", "전개부", "후렴구", "브릿지", "아웃트로"],
+                "energy":  [25, 35, 50, 45, 20],
+                "tempo":   [38, 40, 42, 40, 38],
             },
         },
         {
-            "title": "한여름 햇살",
-            "artist": "Sunny Pop",
+            "title": "여름밤의 댄스",
+            "artist": "K-Pop Stars",
             "genre": "팝",
-            "valence": 90,
-            "energy": 85,
-            "tempo": 80,
-            "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+            "valence": 88,
+            "energy": 92,
+            "tempo": 85,
+            "preview_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
             "timeline": {
-                "sections": ["도입부", "전개부", "후렴구", "전환부", "아웃트로"],
-                "energy":   [50, 70, 95, 80, 60],
-                "tempo":    [78, 80, 85, 82, 78],
+                "section": ["도입부", "전개부", "후렴구", "브릿지", "아웃트로"],
+                "energy":  [60, 80, 95, 85, 55],
+                "tempo":   [80, 85, 88, 85, 80],
             },
         },
         {
-            "title": "비 오는 거리",
-            "artist": "안개의 노래",
+            "title": "비 오는 창가",
+            "artist": "이서연",
             "genre": "발라드",
-            "valence": 20,
-            "energy": 25,
+            "valence": 25,
+            "energy": 30,
             "tempo": 35,
-            "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+            "preview_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
             "timeline": {
-                "sections": ["도입부", "전개부", "후렴구", "전환부", "아웃트로"],
-                "energy":   [15, 25, 40, 30, 15],
-                "tempo":    [32, 35, 38, 35, 32],
+                "section": ["도입부", "전개부", "후렴구", "브릿지", "아웃트로"],
+                "energy":  [15, 30, 55, 40, 15],
+                "tempo":   [32, 35, 38, 35, 30],
             },
         },
         {
-            "title": "전자 우주 여행",
-            "artist": "Neon Pulse",
+            "title": "Neon Pulse",
+            "artist": "DJ Aurora",
             "genre": "일렉트로닉",
             "valence": 65,
             "energy": 95,
             "tempo": 95,
-            "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+            "preview_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
             "timeline": {
-                "sections": ["도입부", "전개부", "후렴구", "전환부", "아웃트로"],
-                "energy":   [60, 85, 98, 90, 70],
-                "tempo":    [90, 95, 98, 95, 90],
+                "section": ["도입부", "전개부", "후렴구", "브릿지", "아웃트로"],
+                "energy":  [50, 85, 98, 90, 60],
+                "tempo":   [90, 95, 98, 95, 88],
             },
         },
         {
-            "title": "산책길의 기타",
-            "artist": "Acoustic Days",
+            "title": "숲속의 산책",
+            "artist": "Acoustic Friends",
             "genre": "어쿠스틱",
             "valence": 70,
             "energy": 40,
-            "tempo": 55,
-            "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
+            "tempo": 50,
+            "preview_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
             "timeline": {
-                "sections": ["도입부", "전개부", "후렴구", "전환부", "아웃트로"],
-                "energy":   [25, 40, 55, 45, 30],
-                "tempo":    [52, 55, 58, 55, 50],
+                "section": ["도입부", "전개부", "후렴구", "브릿지", "아웃트로"],
+                "energy":  [25, 40, 55, 45, 30],
+                "tempo":   [45, 50, 52, 50, 45],
             },
         },
     ]
-    return pd.DataFrame(songs)
+    return songs
 
 
-# 음악 교과서 용어 매핑 (수치 옆에 병기하기 위함)
-TERM_MAP = {
-    "valence": "Valence (장조/단조의 느낌, 밝기)",
-    "energy":  "Energy (셈여림, 다이내믹)",
-    "tempo":   "Tempo (빠르기말, BPM 수준)",
-}
+SONGS = load_mock_data()
+DF = pd.DataFrame(SONGS)
 
-# 템포 수치를 음악 용어(빠르기말)로 환산하는 헬퍼
-def tempo_to_term(tempo_score: float) -> str:
-    """0~100 템포 점수를 한국어 빠르기말로 변환한다."""
-    if tempo_score < 20:
+
+# =========================================================
+# 2) 음악 교과서 용어 매핑
+# =========================================================
+def tempo_term(tempo_score: int) -> str:
+    """0~100 점수를 음악 교과서의 '빠르기말'로 변환"""
+    if tempo_score < 25:
         return "Largo (아주 느리게)"
-    elif tempo_score < 40:
-        return "Adagio (느리게)"
-    elif tempo_score < 60:
-        return "Andante (걷는 빠르기)"
-    elif tempo_score < 75:
+    elif tempo_score < 45:
+        return "Andante (느리게/걷는 빠르기)"
+    elif tempo_score < 65:
         return "Moderato (보통 빠르기)"
-    elif tempo_score < 90:
+    elif tempo_score < 85:
         return "Allegro (빠르게)"
     else:
         return "Presto (매우 빠르게)"
 
 
-# 밝기 수치를 장/단조 느낌으로 환산
-def valence_to_term(v: float) -> str:
-    if v < 30:
-        return "단조적·어두움"
-    elif v < 55:
-        return "차분함"
-    elif v < 75:
-        return "밝은 편"
+def valence_term(v: int) -> str:
+    """밝기 점수를 장조/단조 느낌으로 변환"""
+    if v >= 70:
+        return "장조의 밝고 경쾌한 느낌"
+    elif v >= 45:
+        return "장조와 단조가 섞인 차분한 느낌"
     else:
-        return "장조적·매우 밝음"
+        return "단조의 어둡고 쓸쓸한 느낌"
 
 
-# 에너지 수치를 셈여림으로 환산
-def energy_to_dynamics(e: float) -> str:
+def energy_term(e: int) -> str:
+    """에너지 점수를 셈여림으로 변환"""
     if e < 25:
-        return "pp ~ p (여리게)"
+        return "pp ~ p (아주 여리게)"
     elif e < 50:
-        return "mp ~ mf (보통)"
+        return "mp ~ mf (조금 여리게/조금 세게)"
     elif e < 75:
         return "f (세게)"
     else:
-        return "ff (매우 세게)"
+        return "ff (아주 세게)"
 
 
 # =========================================================
-# 2) 세션 스테이트 초기화
-#    - 감상평 텍스트, 퀴즈 선택 곡, 비평지 출력 여부 등을 저장
+# 3) 추천 알고리즘: 유클리드 거리
+# =========================================================
+def recommend_songs(user_v: int, user_e: int, user_t: int, top_k: int = 2):
+    """학생 슬라이더 값과 가장 가까운 곡 top_k 추천"""
+    user_vec = np.array([user_v, user_e, user_t])
+    distances = []
+    for i, song in enumerate(SONGS):
+        song_vec = np.array([song["valence"], song["energy"], song["tempo"]])
+        dist = float(np.linalg.norm(user_vec - song_vec))
+        distances.append((i, dist))
+    distances.sort(key=lambda x: x[1])
+    return distances[:top_k]
+
+
+# =========================================================
+# 4) 세션 상태 초기화
 # =========================================================
 if "review_text" not in st.session_state:
     st.session_state.review_text = ""
-if "show_critique" not in st.session_state:
-    st.session_state.show_critique = False
-if "quiz_song_idx" not in st.session_state:
-    # 퀴즈 곡은 한 번 정해지면 새로고침 전에는 고정되도록 무작위 선택
-    rng = np.random.default_rng(seed=None)
-    st.session_state.quiz_song_idx = int(rng.integers(0, 6))
+if "final_report" not in st.session_state:
+    st.session_state.final_report = ""
 
 
-# 데이터 로드
-df_songs = load_mock_songs()
+def append_chip(word: str):
+    """도우미 단어 칩을 누르면 감상평 텍스트에 단어 자동 추가"""
+    current = st.session_state.review_text.rstrip()
+    if current and not current.endswith((",", ".", " ")):
+        current += ", "
+    elif current:
+        current += " "
+    st.session_state.review_text = current + word
+
 
 # =========================================================
-# 레이아웃 1: 앱 타이틀 & 설명
+# [레이아웃 1] 앱 타이틀 & 설명
 # =========================================================
 st.title("🎵 중학생을 위한 음악 감상 & 데이터 대시보드")
 st.markdown(
     """
-    > 음악도 **데이터**로 표현할 수 있어요!  
-    > 밝기·에너지·빠르기 같은 **오디오 특징(Feature)** 을 직접 조절해 보고,  
-    > 내 감정에 맞는 음악을 추천받아 들으며 **감상 비평지** 까지 완성해 봅시다.
+    > 음악을 **귀로만** 듣지 않고, **데이터로도** 만나보는 시간!  
+    > 슬라이더로 내 기분을 표현하면 어울리는 곡을 추천받고,  
+    > 곡의 **밝기 · 에너지 · 빠르기** 를 그래프로 살펴본 뒤  
+    > 나만의 **감상 비평지**까지 완성해 봅시다.
     """
 )
-st.markdown("---")
+st.divider()
+
 
 # =========================================================
-# 사이드바: 레이아웃 3의 감정 슬라이더
+# [레이아웃 2] 음악 퀴즈
 # =========================================================
-st.sidebar.header("🎚️ 내 감정 슬라이더")
-st.sidebar.caption("지금 듣고 싶은 음악의 느낌을 조절해 보세요.")
+with st.expander("🧩 오늘의 음악 퀴즈 힌트 — Guess the Feature!", expanded=False):
+    quiz_song = SONGS[0]  # 첫 번째 곡(봄의 왈츠)으로 퀴즈
+    st.markdown(
+        f"**문제 곡:** {quiz_song['title']} — *{quiz_song['artist']}* ({quiz_song['genre']})"
+    )
+    st.audio(quiz_song["preview_url"])
+    st.caption("🎧 위 곡을 들어보고, 이 곡의 '밝기'와 '에너지' 점수가 얼마일지 예상해 보세요!")
+
+    col_q1, col_q2 = st.columns(2)
+    with col_q1:
+        guess_v = st.slider("내가 예상한 밝기 (Valence)", 0, 100, 50, key="quiz_v")
+    with col_q2:
+        guess_e = st.slider("내가 예상한 에너지 (Energy)", 0, 100, 50, key="quiz_e")
+
+    if st.button("✅ 정답 확인", key="quiz_check"):
+        real_v = quiz_song["valence"]
+        real_e = quiz_song["energy"]
+        diff_v = abs(real_v - guess_v)
+        diff_e = abs(real_e - guess_e)
+        avg_diff = (diff_v + diff_e) / 2
+
+        st.markdown(
+            f"- 실제 밝기: **{real_v}점** / 내 예상: {guess_v}점 (차이 {diff_v})\n"
+            f"- 실제 에너지: **{real_e}점** / 내 예상: {guess_e}점 (차이 {diff_e})"
+        )
+        if avg_diff <= 10:
+            st.success("🏆 대단해요! 평균 차이 10점 이내 — 음악 귀가 정말 좋네요!")
+        elif avg_diff <= 25:
+            st.info("👍 좋아요! 곡의 분위기를 잘 잡아냈어요.")
+        else:
+            st.warning("🤔 조금 더 집중해서 들어볼까요? 다른 곡으로도 연습해 보세요!")
+
+st.divider()
+
+
+# =========================================================
+# [레이아웃 3] 사이드바 — 감정 슬라이더 & 음악 추천
+# =========================================================
+st.sidebar.header("🎚️ 내 기분 표현하기")
+st.sidebar.caption("슬라이더를 움직여 지금 듣고 싶은 음악의 느낌을 표현해 보세요.")
 
 user_valence = st.sidebar.slider(
-    "1. 음악의 밝기  (어둡고 슬픔 ↔ 밝고 경쾌함)",
-    min_value=0, max_value=100, value=60, step=1,
+    "1. 음악의 밝기 (어둡고 슬픔 0 ↔ 100 밝고 경쾌함)", 0, 100, 60,
 )
 user_energy = st.sidebar.slider(
-    "2. 음악의 에너지  (잔잔함 ↔ 역동적·강렬함)",
-    min_value=0, max_value=100, value=50, step=1,
+    "2. 음악의 에너지 (잔잔함 0 ↔ 100 역동적/강렬함)", 0, 100, 50,
 )
 user_tempo = st.sidebar.slider(
-    "3. 음악의 빠르기  (매우 느림 ↔ 매우 빠름)",
-    min_value=0, max_value=100, value=55, step=1,
+    "3. 음악의 빠르기 (매우 느림 0 ↔ 100 매우 빠름)", 0, 100, 50,
 )
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(
-    f"**현재 설정 요약**  \n"
-    f"- 밝기: `{user_valence}` → {valence_to_term(user_valence)}  \n"
-    f"- 에너지: `{user_energy}` → {energy_to_dynamics(user_energy)}  \n"
-    f"- 빠르기: `{user_tempo}` → {tempo_to_term(user_tempo)}"
+    f"**현재 내 기분 벡터**  \n"
+    f"- 밝기: `{user_valence}` ({valence_term(user_valence)})  \n"
+    f"- 에너지: `{user_energy}` ({energy_term(user_energy)})  \n"
+    f"- 빠르기: `{user_tempo}` ({tempo_term(user_tempo)})"
 )
 
-# =========================================================
-# 레이아웃 2: 음악 퀴즈 (Guess the Feature!)
-# =========================================================
-with st.expander("🧩 오늘의 음악 퀴즈 힌트 (Guess the Feature!)", expanded=False):
-    st.markdown(
-        "아래 곡을 듣고, 이 곡의 **밝기(Valence)** 와 **에너지(Energy)** 점수가 "
-        "몇 점일지 직접 맞춰보세요! (0~100점)"
-    )
-
-    quiz_song = df_songs.iloc[st.session_state.quiz_song_idx]
-    st.markdown(f"**🎧 퀴즈 곡:** *{quiz_song['title']}* — {quiz_song['artist']} ({quiz_song['genre']})")
-    st.audio(quiz_song["audio_url"])
-
-    col_q1, col_q2 = st.columns(2)
-    with col_q1:
-        guess_valence = st.slider("내가 생각하는 밝기 점수", 0, 100, 50, key="guess_valence")
-    with col_q2:
-        guess_energy = st.slider("내가 생각하는 에너지 점수", 0, 100, 50, key="guess_energy")
-
-    if st.button("✅ 정답 확인", key="check_quiz"):
-        diff_v = abs(guess_valence - quiz_song["valence"])
-        diff_e = abs(guess_energy - quiz_song["energy"])
-        avg_diff = (diff_v + diff_e) / 2
-
-        st.write(
-            f"- 실제 밝기: **{quiz_song['valence']}점** / 내 예측: **{guess_valence}점** "
-            f"→ 차이 `{diff_v}`"
-        )
-        st.write(
-            f"- 실제 에너지: **{quiz_song['energy']}점** / 내 예측: **{guess_energy}점** "
-            f"→ 차이 `{diff_e}`"
-        )
-
-        if avg_diff <= 10:
-            st.success("🎉 음악적 직관이 뛰어나요! 거의 정확하게 맞췄어요.")
-        elif avg_diff <= 25:
-            st.info("👍 꽤 비슷해요! 조금만 더 귀를 기울이면 완벽해질 거예요.")
-        else:
-            st.warning("🙂 다음엔 더 정확히 맞춰봐요. 셈여림과 분위기에 집중해 보세요.")
-
-st.markdown("---")
-
-# =========================================================
-# 레이아웃 3: 감정 슬라이더 기반 음악 추천
-#  - 사용자 입력값과 각 곡의 특징 벡터의 유클리드 거리를 계산
-#  - 가장 가까운 2곡을 추천
-# =========================================================
-st.header("🎯 내 감정에 맞는 음악 추천")
-
-user_vec = np.array([user_valence, user_energy, user_tempo], dtype=float)
-song_vecs = df_songs[["valence", "energy", "tempo"]].to_numpy(dtype=float)
-distances = np.linalg.norm(song_vecs - user_vec, axis=1)
-
-df_rec = df_songs.copy()
-df_rec["거리"] = distances
-df_rec = df_rec.sort_values("거리").reset_index(drop=True)
-
-top2 = df_rec.head(2)
-
-st.markdown(
-    f"슬라이더 값 **(밝기 {user_valence} / 에너지 {user_energy} / 빠르기 {user_tempo})** "
-    f"에 가장 가까운 추천곡 **2곡** 입니다."
-)
+st.subheader("🎯 내 기분에 어울리는 추천 곡")
+recs = recommend_songs(user_valence, user_energy, user_tempo, top_k=2)
 
 rec_cols = st.columns(2)
-for i, (_, row) in enumerate(top2.iterrows()):
-    with rec_cols[i]:
-        st.subheader(f"#{i+1}  {row['title']}")
-        st.caption(f"{row['artist']} · {row['genre']}")
+for col, (idx, dist) in zip(rec_cols, recs):
+    song = SONGS[idx]
+    with col:
+        st.markdown(f"### 🎵 {song['title']}")
         st.markdown(
-            f"- 밝기: **{row['valence']}** ({valence_to_term(row['valence'])})  \n"
-            f"- 에너지: **{row['energy']}** ({energy_to_dynamics(row['energy'])})  \n"
-            f"- 빠르기: **{row['tempo']}** ({tempo_to_term(row['tempo'])})  \n"
-            f"- 내 감정과의 거리: `{row['거리']:.1f}`"
+            f"- 아티스트: **{song['artist']}**\n"
+            f"- 장르: `{song['genre']}`\n"
+            f"- 기분과의 거리: `{dist:.1f}` (작을수록 비슷함)"
         )
-        st.audio(row["audio_url"])
+        st.audio(song["preview_url"])
 
-st.markdown("---")
+st.divider()
+
 
 # =========================================================
-# 레이아웃 4: 오디오 특징 시각화
-#  - 사용자가 분석할 곡을 직접 선택 가능 (기본값: 추천 1순위)
-#  - 막대그래프: 밝기/에너지/템포 비교
-#  - 선그래프: 곡 진행에 따른 에너지·템포 타임라인
+# [레이아웃 4] 오디오 특징 시각화
 # =========================================================
-st.header("📊 오디오 특징(Feature) 분석")
+st.subheader("📊 오디오 특징 분석 — 데이터로 음악 들여다보기")
 
-song_options = df_songs["title"].tolist()
-default_idx = song_options.index(top2.iloc[0]["title"])
+song_titles = [s["title"] for s in SONGS]
+default_idx = recs[0][0]
 selected_title = st.selectbox(
-    "분석할 곡을 선택하세요",
-    options=song_options,
-    index=default_idx,
+    "분석하고 싶은 곡을 골라보세요", song_titles, index=default_idx,
 )
-selected_song = df_songs[df_songs["title"] == selected_title].iloc[0]
+selected_song = next(s for s in SONGS if s["title"] == selected_title)
 
-# 4-1) 음악적 특징 막대그래프
-st.subheader("🎼 음악적 특징 점수 (0~100)")
+# (1) 수치 카드 + 음악 교과서 용어
+m1, m2, m3 = st.columns(3)
+m1.metric(
+    label="🌞 밝기 (Valence) — 장조/단조의 느낌",
+    value=f"{selected_song['valence']} / 100",
+    delta=valence_term(selected_song["valence"]),
+    delta_color="off",
+)
+m2.metric(
+    label="💪 에너지 (Energy) — 셈여림",
+    value=f"{selected_song['energy']} / 100",
+    delta=energy_term(selected_song["energy"]),
+    delta_color="off",
+)
+m3.metric(
+    label="⏱️ 템포 (Tempo) — 빠르기말",
+    value=f"{selected_song['tempo']} / 100",
+    delta=tempo_term(selected_song["tempo"]),
+    delta_color="off",
+)
 
+# (2) 막대그래프
+st.markdown("#### 🎼 곡 전체 특징 (Bar Chart)")
 feature_df = pd.DataFrame(
-    {
-        "점수": [
-            selected_song["valence"],
-            selected_song["energy"],
-            selected_song["tempo"],
-        ]
-    },
-    index=[
-        TERM_MAP["valence"],
-        TERM_MAP["energy"],
-        TERM_MAP["tempo"],
-    ],
+    {"점수": [selected_song["valence"], selected_song["energy"], selected_song["tempo"]]},
+    index=["밝기(Valence)", "에너지(Energy)", "템포(Tempo)"],
 )
 st.bar_chart(feature_df, height=260)
 
-# 수치 옆에 음악 용어 병기
-c1, c2, c3 = st.columns(3)
-c1.metric("Valence (밝기)", f"{selected_song['valence']}점", valence_to_term(selected_song["valence"]))
-c2.metric("Energy (셈여림)", f"{selected_song['energy']}점", energy_to_dynamics(selected_song["energy"]))
-c3.metric("Tempo (빠르기말)", f"{selected_song['tempo']}점", tempo_to_term(selected_song["tempo"]))
-
-# 4-2) 곡 진행에 따른 타임라인 선그래프
-st.subheader("⏱️ 곡 진행 타임라인 (도입부 → 후렴구 → 아웃트로)")
-
-tl = selected_song["timeline"]
+# (3) 섹션별 타임라인
+st.markdown("#### 📈 곡의 진행에 따른 에너지·템포 변화 (Timeline)")
 timeline_df = pd.DataFrame(
     {
-        "에너지 (셈여림)": tl["energy"],
-        "템포 (빠르기)":   tl["tempo"],
+        "에너지(Energy)": selected_song["timeline"]["energy"],
+        "템포(Tempo)":   selected_song["timeline"]["tempo"],
     },
-    index=tl["sections"],
+    index=selected_song["timeline"]["section"],
 )
 st.line_chart(timeline_df, height=280)
 st.caption(
-    "선그래프는 곡이 시작해서 끝날 때까지 **셈여림(Energy)** 과 **빠르기(Tempo)** 가 "
-    "어떻게 변하는지를 보여줍니다. 후렴구에서 에너지가 가장 커지는 패턴을 관찰해 보세요."
+    "💡 도입부 → 전개부 → 후렴구 → 브릿지 → 아웃트로 순으로, "
+    "보통 후렴구에서 에너지가 가장 커집니다(클라이맥스)."
 )
 
-st.markdown("---")
+st.divider()
+
 
 # =========================================================
-# 레이아웃 5: 감상 비평지 작성 및 저장
+# [레이아웃 5] 감상 비평지 작성 및 저장
 # =========================================================
-st.header("📝 감상 비평지 작성")
+st.subheader("✍️ 나만의 감상 비평지 작성하기")
+st.caption("아래 단어 칩을 누르면 감상평에 자동으로 단어가 추가돼요. 자유롭게 이어 써보세요!")
 
-st.markdown("**감상평 도우미 단어**를 눌러 텍스트 상자에 단어를 추가할 수 있어요.")
-
-# 도우미 단어 칩 (버튼)
-helper_words = [
-    "웅장한", "경쾌한", "우아한", "쓸쓸한", "몽환적인",
-    "잔잔한", "강렬한", "따뜻한", "차가운", "신비로운",
-    "희망찬", "긴장감 있는",
+# 도우미 단어 칩
+chip_words = [
+    "웅장한", "경쾌한", "우아한", "쓸쓸한",
+    "몽환적인", "박진감 있는", "포근한", "신비로운",
+    "역동적인", "잔잔한", "감미로운", "긴장감 있는",
 ]
+chip_cols = st.columns(4)
+for i, word in enumerate(chip_words):
+    with chip_cols[i % 4]:
+        st.button(
+            f"+ {word}",
+            key=f"chip_{i}",
+            on_click=append_chip,
+            args=(word,),
+            use_container_width=True,
+        )
 
-# 버튼은 한 줄에 6개씩 배치
-def add_word(word: str):
-    """버튼 클릭 시 감상평 텍스트에 단어를 덧붙인다."""
-    current = st.session_state.review_text
-    sep = " " if current and not current.endswith(" ") else ""
-    st.session_state.review_text = f"{current}{sep}{word}"
-
-chip_rows = [helper_words[i:i+6] for i in range(0, len(helper_words), 6)]
-for row in chip_rows:
-    cols = st.columns(len(row))
-    for col, w in zip(cols, row):
-        col.button(w, key=f"chip_{w}", on_click=add_word, args=(w,))
-
-# 감상평 입력
+# 감상평 입력창
 st.text_area(
-    "감상평을 자유롭게 작성해 보세요",
+    "📝 감상평 (자유롭게 작성)",
     key="review_text",
-    height=140,
-    placeholder="예) 이 곡은 후렴구에서 에너지가 크게 올라가서 마음이 두근거렸다...",
+    height=150,
+    placeholder="예) 후렴구에서 에너지가 확 올라가서 가슴이 두근거렸다. 장조의 밝은 느낌이 봄과 잘 어울린다...",
 )
 
-# 비평지 완성 버튼
-if st.button("📄 감상 비평지 완성"):
-    st.session_state.show_critique = True
+# 감상 비평지 완성 버튼
+if st.button("📜 감상 비평지 완성하기", type="primary"):
+    chart_summary_lines = [
+        f"- 도입부 에너지: {selected_song['timeline']['energy'][0]}",
+        f"- 후렴구 에너지: {selected_song['timeline']['energy'][2]} (최고점)",
+        f"- 아웃트로 에너지: {selected_song['timeline']['energy'][-1]}",
+    ]
+    chart_summary = "\n".join(chart_summary_lines)
 
-# 비평지 출력
-if st.session_state.show_critique:
-    st.markdown("### 🧾 나의 감상 비평지")
+    report = f"""🎵 감상 비평지
+====================================
 
-    critique_md = f"""
-**🎵 곡 정보**
-- 제목: **{selected_song['title']}**
-- 아티스트: {selected_song['artist']}
-- 장르: {selected_song['genre']}
+[선택한 음악 정보]
+- 제목      : {selected_song['title']}
+- 아티스트  : {selected_song['artist']}
+- 장르      : {selected_song['genre']}
 
-**📊 데이터 차트 요약**
-- 밝기 (Valence): **{selected_song['valence']}점** — {valence_to_term(selected_song['valence'])}
-- 에너지 (Energy): **{selected_song['energy']}점** — {energy_to_dynamics(selected_song['energy'])}
-- 빠르기 (Tempo): **{selected_song['tempo']}점** — {tempo_to_term(selected_song['tempo'])}
-- 곡 진행 패턴: {', '.join(f"{s}({e})" for s, e in zip(tl['sections'], tl['energy']))}
+[데이터 차트 요약]
+- 밝기(Valence) : {selected_song['valence']} / 100  → {valence_term(selected_song['valence'])}
+- 에너지(Energy): {selected_song['energy']} / 100  → {energy_term(selected_song['energy'])}
+- 템포(Tempo)   : {selected_song['tempo']} / 100  → {tempo_term(selected_song['tempo'])}
 
-**✍️ 나의 감상평**
-{st.session_state.review_text if st.session_state.review_text.strip() else "_(감상평이 비어 있습니다)_"}
+[섹션별 에너지 변화]
+{chart_summary}
+
+[내 기분 슬라이더 값]
+- 밝기 {user_valence} / 에너지 {user_energy} / 빠르기 {user_tempo}
+
+[내가 쓴 감상평]
+{st.session_state.review_text.strip() or "(아직 작성되지 않았습니다)"}
+
+====================================
 """
-    st.markdown(critique_md)
+    st.session_state.final_report = report
 
-    # 다운로드용 텍스트 파일 생성
-    txt_bytes = critique_md.encode("utf-8")
+# 비평지 미리보기 + 다운로드
+if st.session_state.final_report:
+    st.markdown("### 📄 완성된 감상 비평지 미리보기")
+    st.code(st.session_state.final_report, language="markdown")
 
-    # 다운로드용 CSV (한 행 요약)
+    # TXT 다운로드
+    st.download_button(
+        label="⬇️ 텍스트(.txt)로 저장하기",
+        data=st.session_state.final_report.encode("utf-8"),
+        file_name=f"감상비평지_{selected_song['title']}.txt",
+        mime="text/plain",
+    )
+
+    # CSV 다운로드
     csv_df = pd.DataFrame([{
-        "title":   selected_song["title"],
-        "artist":  selected_song["artist"],
-        "genre":   selected_song["genre"],
-        "valence": selected_song["valence"],
-        "energy":  selected_song["energy"],
-        "tempo":   selected_song["tempo"],
-        "review":  st.session_state.review_text,
+        "제목": selected_song["title"],
+        "아티스트": selected_song["artist"],
+        "장르": selected_song["genre"],
+        "밝기(Valence)": selected_song["valence"],
+        "에너지(Energy)": selected_song["energy"],
+        "템포(Tempo)": selected_song["tempo"],
+        "내_기분_밝기": user_valence,
+        "내_기분_에너지": user_energy,
+        "내_기분_빠르기": user_tempo,
+        "감상평": st.session_state.review_text.strip(),
     }])
     csv_buf = io.StringIO()
     csv_df.to_csv(csv_buf, index=False, encoding="utf-8-sig")
-    csv_bytes = csv_buf.getvalue().encode("utf-8-sig")
+    st.download_button(
+        label="⬇️ 표 데이터(.csv)로 저장하기",
+        data=csv_buf.getvalue().encode("utf-8-sig"),
+        file_name=f"감상비평지_{selected_song['title']}.csv",
+        mime="text/csv",
+    )
 
-    d1, d2 = st.columns(2)
-    with d1:
-        st.download_button(
-            label="⬇️ 감상 비평지 TXT 다운로드",
-            data=txt_bytes,
-            file_name=f"감상비평지_{selected_song['title']}.txt",
-            mime="text/plain",
-        )
-    with d2:
-        st.download_button(
-            label="⬇️ 감상 비평지 CSV 다운로드",
-            data=csv_bytes,
-            file_name=f"감상비평지_{selected_song['title']}.csv",
-            mime="text/csv",
-        )
-
-st.markdown("---")
-st.caption("ⓒ 음악과 데이터 융합 수업용 데모 · Streamlit으로 만든 교실용 대시보드")
-'''
-
-# 문법 검증
-try:
-    compile(app_code, "app.py", "exec")
-    print("OK: app.py compiles (no SyntaxError).")
-except SyntaxError as e:
-    print("SyntaxError:", e)
-
-# 파일로 저장
-with open("/tmp/app.py", "w", encoding="utf-8") as f:
-    f.write(app_code)
-
-import os
-print("size:", os.path.getsize("/tmp/app.py"), "bytes")
-print("lines:", app_code.count("\n"))
+st.divider()
+st.caption("© 음악 수업용 데모 — Streamlit으로 만든 감상 대시보드")
